@@ -1,454 +1,1140 @@
-class XiangqiBoard:
-    initial_board = [
-            [141, 151, 131, 121, 111, 122, 132, 152, 142],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 161, 0, 0, 0, 0, 0, 162, 0],
-            [101, 0, 102, 0, 103, 0, 104, 0, 105],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [201, 0, 202, 0, 203, 0, 204, 0, 205],
-            [0, 261, 0, 0, 0, 0, 0, 262, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [241, 251, 231, 221, 211, 222, 232, 252, 242]
-        ]
-    
-    initial_fen = 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR'
-    
-    pieceTypeMap = {
-            0: 'soldier',
-            1: 'general',
-            2: 'advisor',
-            3: 'elephant',
-            4: 'chariot',
-            5: 'horse',
-            6: 'cannon'
-        }
-    
-    pieceColorMap = {
-            1: 'black',
-            2: 'white'
-        }
+from dataclasses import dataclass
+from typing import List, Dict, Tuple
+import re
 
-    def __init__(self, fen: str = None) -> None:
-        if fen is not None:
-            self.board = self.getBoardFromFen(fen)
-            self.fen = fen
+@dataclass
+class XIANGQI_STATUS:
+    WAITING = 0
+    PLAYING = 1
+    DRAW = 2
+    WHITEWIN = 3
+    BLACKWIN = 4
 
-    def resetBoard(self) -> None:
-        self.board = self.initial_board
-        self.fen = self.initial_fen
+@dataclass
+class PIECE_TYPE:
+    GENERAL = 'general'
+    ADVISOR = 'advisor'
+    ELEPHANT = 'elephant'
+    HORSE = 'horse'
+    CHARIOT = 'chariot'
+    CANNON = 'cannon'
+    SOLDIER = 'soldier'
 
-    def getFen(self) -> str:
-        return self.fen
-    
-    def getBoard(self) -> list:
-        return self.board
-    
-    # function to get row and col from a move, for example, a0 -> (9, 0), a9 -> (0, 0)
-    def getRowCol(self, move: str) -> tuple:
-        row = 9 - int(move[1])
-        col = ord(move[0]) - ord('a')
-        return (row, col)
-    
-    # function to get move from row and col, for example, (9, 0) -> a0, (0, 0) -> a9
-    def getMove(self, row: int, col: int) -> str:
-        return chr(col + ord('a')) + str(9 - row)
-    
-    # Here is a sample FEN string in my format: rnbakabnr/9/9/9/9/9/9/9/RNBAKABNR c0d2 h9g7 a0a1. The first part is the initial board state, the remaining parts are the moves. Use function getRowCol to get the board state given a fen string.
-    def getBoardFromFen(self, fen: str) -> list:
-        fenArray = fen.split(' ')
-        # clone the initial board
-        board = [row[:] for row in self.initial_board]
+class Piece:
+    def __init__(self, white: bool):
+        self._killed: bool = False
+        self._white: bool = False
+        self._identifier: str = '.'
+        self._white = white
 
-        if len(fenArray) > 1:
-            for i in range(1, len(fenArray)):
-                move = fenArray[i]
-                if len(move) == 4:
-                    row1, col1 = self.getRowCol(move[:2])
-                    row2, col2 = self.getRowCol(move[2:])
-                    board[row2][col2] = board[row1][col1]
-                    board[row1][col1] = 0
+    def isWhite(self) -> bool:
+        return self._white
 
-        return board
+    def setWhite(self, white: bool):
+        self._white = white
+
+    def isKilled(self) -> bool:
+        return self._killed
+
+    def setKilled(self, killed: bool):
+        self._killed = killed
+
+    def getIdentifier(self) -> str:
+        return self._identifier
+
+    def setIdentifier(self, identifier: str):
+        self._identifier = identifier
+
+    def getType(self) -> str:
+        return self.__class__.__name__.lower()
     
-    def setBoardFromFen(self, fen: str) -> None:
-        self.board = self.getBoardFromFen(fen)
-        self.fen = fen
-
-    # function to get piece type and color from a piece number
-    def decodePiece(self, piece: int) -> tuple:
-        if piece == 0:
-            return ('', '')
+    def createPiece(identifier):
+        if identifier.lower() == 'k':
+            return General(identifier == identifier.upper())
+        elif identifier.lower() == 'a':
+            return Advisor(identifier == identifier.upper())
+        elif identifier.lower() == 'b':
+            return Elephant(identifier == identifier.upper())
+        elif identifier.lower() == 'n':
+            return Horse(identifier == identifier.upper())
+        elif identifier.lower() == 'r':
+            return Chariot(identifier == identifier.upper())
+        elif identifier.lower() == 'c':
+            return Cannon(identifier == identifier.upper())
+        elif identifier.lower() == 'p':
+            return Soldier(identifier == identifier.upper())
         else:
-            # piece is a number, for example, 101, 211, 141, 251, etc. Change it to a string, for example, '101', '211', '141', '251', etc. Then split it into two parts, for example, ('1', '0', '1'), ('2', '1', '1'), ('1', '4', '1'), ('2', '5', '1'), etc. The first part is the color, the second part is the type.
-            pieceInfo = str(piece)
-            pieceColor = int(pieceInfo[0])
-            pieceType = int(pieceInfo[1])
-            return (self.pieceTypeMap[pieceType], self.pieceColorMap[pieceColor])
-
-    def makeMove(self, move: str) -> dict:
-        if self.isValidMove(move):
-            row1, col1 = self.getRowCol(move[:2])
-            row2, col2 = self.getRowCol(move[2:])
-            self.board[row2][col2] = self.board[row1][col1]
-            self.board[row1][col1] = 0
-            self.fen += ' ' + move
-
-            # color of the piece that just moved
-            piece1_type, piece1_color = self.decodePiece(self.board[row2][col2])
-            opponent_color = 'black' if piece1_color == 'white' else 'white'
-            
-            return {
-                'status': True,
-                'isCheck': self.__isCheck(opponent_color),
-                'isCheckmate': self.__isCheckmate(opponent_color),
-            }
+            raise Exception('Invalid fen')
         
-        return {
-            'status': False,
-        }
+class Square:
+    # row: top -> down: 0 -> 9
+    # col: left -> right: 0 -> 8
+
+    def __init__(self, row, col, piece: Piece = None):
+        self._piece = piece
+        self._row = row
+        self._col = col
+
+    def setPiece(self, piece: Piece):
+        self._piece = piece
+
+    def getPiece(self) -> Piece:
+        return self._piece
+
+    def isPiece(self, pieceType: str, white: bool) -> bool:
+        if self._piece:
+            return self._piece.getType() == pieceType and self._piece.isWhite() == white
+        return False
+
+    def setRow(self, row):
+        self._row = row
+
+    def getRow(self) -> int:
+        return self._row
+
+    def setCol(self, col):
+        self._col = col
+
+    def getCol(self) -> int:
+        return self._col
+
+    def getType(self) -> str or None:
+        if self._piece:
+            return self._piece.getType()
+        return None
+
+    def getColor(self) -> str or None:
+        if self._piece:
+            return 'white' if self._piece.isWhite() else 'black'
+        return None
+
+    def getIdentifier(self) -> str or None:
+        if self._piece:
+            return self._piece.getIdentifier()
+        return None
+
+    def isOccupied(self) -> bool:
+        return self._piece is not None
+
+    def getUci(self) -> str:
+        # row: bottom -> up: 0 -> 9
+        # col: left -> right: 'a' -> 'i'
+        return chr(97 + self._col) + str(9 - self._row)
+
+class Board:
+    def __init__(self, board_fen):
+        self._squares: Square = []
+        self.initBoardFromFen(board_fen)
     
-    def isValidMoveBasedOnFen(self, fen: str, move: str) -> bool:
-        self.setBoardFromFen(fen)
-        return self.isValidMove(move)
-
-    def isValidMove(self, move: str) -> bool:
-        row1, col1 = self.getRowCol(move[:2])
-        row2, col2 = self.getRowCol(move[2:])
-
-        print(self.board)
-
-        return self.__isValidMove(row1, col1, row2, col2) and self.__isValidMoveAfter(row1, col1, row2, col2)
-
-    def __isValidMove(self, row1: int, col1: int, row2: int, col2: int) -> bool:
-        piece1_type, piece1_color = self.decodePiece(self.board[row1][col1])
-        piece2_type, piece2_color = self.decodePiece(self.board[row2][col2])
-
-        # check if the move is within the board
-        if row1 < 0 or row1 > 9 or col1 < 0 or col1 > 8 or row2 < 0 or row2 > 9 or col2 < 0 or col2 > 8:
-            return False
-        
-        # check if move is to the same square
-        if row1 == row2 and col1 == col2:
-            return False
-        
-        # check if the move is from an empty square
-        if self.board[row1][col1] == 0:
-            return False
-        
-        # check if the move is to a square with the same color piece
-        if self.board[row2][col2] != 0:
-            if piece1_color == piece2_color:
-                return False
-            
-        # check if the move is valid for each piece type
-        if piece1_type == 'soldier':
-            return self.__isValidMoveSoldier(row1, col1, row2, col2)
-        elif piece1_type == 'general':
-            return self.__isValidMoveGeneral(row1, col1, row2, col2)
-        elif piece1_type == 'advisor':
-            return self.__isValidMoveAdvisor(row1, col1, row2, col2)
-        elif piece1_type == 'elephant':
-            return self.__isValidMoveElephant(row1, col1, row2, col2)
-        elif piece1_type == 'chariot':
-            return self.__isValidMoveChariot(row1, col1, row2, col2)
-        elif piece1_type == 'horse':
-            return self.__isValidMoveHorse(row1, col1, row2, col2)
-        elif piece1_type == 'cannon':
-            return self.__isValidMoveCannon(row1, col1, row2, col2)
-        else:
-            return False
-        
-    def __isValidMoveSoldier(self, row1: int, col1: int, row2: int, col2: int) -> bool:
-        piece1_type, piece1_color = self.decodePiece(self.board[row1][col1])
-
-        if piece1_color == 'white':
-            # forwards
-            if row2 == row1 - 1 and col2 == col1:
-                return True
-            
-            # horizontal
-            elif row1 < 5 and (row2 == row1 and abs(col2 - col1) == 1):
-                return True
-            
-            else:
-                return False
-            
-        elif piece1_color == 'black':
-            # forwards
-            if row2 == row1 + 1 and col2 == col1:
-                return True
-            
-            # horizontal
-            elif row1 > 4 and (row2 == row1 and abs(col2 - col1) == 1):
-                return True
-            
-            else:
-                return False
-            
-        return False
-        
-    def __isValidMoveGeneral(self, row1: int, col1: int, row2: int, col2: int) -> bool:
-        piece1_type, piece1_color = self.decodePiece(self.board[row1][col1])
-
-        if piece1_color == 'white':
-            if 7 <= row2 <= 9 and 3 <= col2 <= 5:
-                if abs(row2 - row1) + abs(col2 - col1) == 1:
-                    return True
-                else:
-                    return False
-                
-        elif piece1_color == 'black':
-            if 0 <= row2 <= 2 and 3 <= col2 <= 5:
-                if abs(row2 - row1) + abs(col2 - col1) == 1:
-                    return True
-                else:
-                    return False
-                
-        return False
-        
-    def __isValidMoveAdvisor(self, row1: int, col1: int, row2: int, col2: int) -> bool:
-        piece1_type, piece1_color = self.decodePiece(self.board[row1][col1])
-
-        if piece1_color == 'white':
-            if 7 <= row2 <= 9 and 3 <= col2 <= 5:
-                if abs(row2 - row1) == 1 and abs(col2 - col1) == 1:
-                    return True
-                else:
-                    return False
-                
-        elif piece1_color == 'black':
-            if 0 <= row2 <= 2 and 3 <= col2 <= 5:
-                if abs(row2 - row1) == 1 and abs(col2 - col1) == 1:
-                    return True
-                else:
-                    return False
-                
-        return False
-            
-    def __isValidMoveElephant(self, row1: int, col1: int, row2: int, col2: int) -> bool:
-        piece1_type, piece1_color = self.decodePiece(self.board[row1][col1])
-
-        if piece1_color == 'white':
-            if row2 > 4:
-                if abs(row2 - row1) == 2 and abs(col2 - col1) == 2:
-                    if self.board[(row1 + row2) // 2][(col1 + col2) // 2] == 0:
-                        return True
-                    else:
-                        return False
-                    
-        elif piece1_color == 'black':
-            if row2 < 5:
-                if abs(row2 - row1) == 2 and abs(col2 - col1) == 2:
-                    if self.board[(row1 + row2) // 2][(col1 + col2) // 2] == 0:
-                        return True
-                    else:
-                        return False
-                    
-        return False
+    def getSquare(self, row: int, col: int) -> Square:
+        return self._squares[row][col]
     
-    def __isValidMoveHorse(self, row1: int, col1: int, row2: int, col2: int) -> bool:
-        if abs(row2 - row1) == 1 and abs(col2 - col1) == 2:
-            if self.board[row1][(col1 + col2) // 2] == 0:
-                return True
-            else:
-                return False
-            
-        elif abs(row2 - row1) == 2 and abs(col2 - col1) == 1:
-            if self.board[(row1 + row2) // 2][col1] == 0:
-                return True
-            else:
-                return False
-                    
-        return False
-
-    def __isValidMoveChariot(self, row1: int, col1: int, row2: int, col2: int) -> bool:
-        if row1 == row2:
-            if col1 < col2:
-                for col in range(col1 + 1, col2):
-                    if self.board[row1][col] != 0:
-                        return False
-            else:
-                for col in range(col2 + 1, col1):
-                    if self.board[row1][col] != 0:
-                        return False
-                    
-            return True
-        
-        elif col1 == col2:
-            if row1 < row2:
-                for row in range(row1 + 1, row2):
-                    if self.board[row][col1] != 0:
-                        return False
-            else:
-                for row in range(row2 + 1, row1):
-                    if self.board[row][col1] != 0:
-                        return False
-                    
-            return True
-        
-        return False
+    def getSquareFromUci(self, uci: str) -> Square:
+        row = 9 - int(uci[1])
+        col = ord(uci[0]) - ord('a')
+        return self.getSquare(row, col)
     
-    def __isValidMoveCannon(self, row1: int, col1: int, row2: int, col2: int) -> bool:
-        if self.board[row2][col2] != 0:
-            if row1 == row2:
-                if col1 < col2:
-                    count = 0
-                    for col in range(col1 + 1, col2):
-                        if self.board[row1][col] != 0:
-                            count += 1
-                    if count == 1:
-                        return True
-                elif col2 < col1:
-                    count = 0
-                    for col in range(col2 + 1, col1):
-                        if self.board[row1][col] != 0:
-                            count += 1
-                    if count == 1:
-                        return True
-                    
-            elif col1 == col2:
-                if row1 < row2:
-                    count = 0
-                    for row in range(row1 + 1, row2):
-                        if self.board[row][col1] != 0:
-                            count += 1
-                    if count == 1:
-                        return True
-                elif row2 < row1:
-                    count = 0
-                    for row in range(row2 + 1, row1):
-                        if self.board[row][col1] != 0:
-                            count += 1
-                    if count == 1:
-                        return True
-                    
-            return False
-        
-        else:
-            return self.__isValidMoveChariot(row1, col1, row2, col2)
-        
-    
-    # check if general is in check
-    def __isCheck(self, color: str) -> bool:
-        # get general's position
-        general_row, general_col = self.__getGeneralPosition(color)
-
-        opponent_color = 'white' if color == 'black' else 'black'
-
-        # for each piece, if piece is opposite color and piece can move to general's position, return True
-        for row in range(10):
-            for col in range(9):
-                piece_type, piece_color = self.decodePiece(self.board[row][col])
-                if piece_color == opponent_color and self.__isValidMove(row, col, general_row, general_col):
-                    return True
-        
-        return False
-
-    # get general's position
-    def __getGeneralPosition(self, color: str) -> tuple:
-        # for row and col in self.board, if piece is general and color is color, return (row, col)
-        for row in range(10):
-            for col in range(9):
-                piece_type, piece_color = self.decodePiece(self.board[row][col])
-                if piece_type == 'general' and piece_color == color:
-                    return (row, col)
-                
+    def getGeneral(self, white) -> Square or None:
+        for i in range(0, 10):
+            for j in range(0, 9):
+                square = self.getSquare(i, j)
+                if square.isOccupied():
+                    piece = square.getPiece()
+                    if isinstance(piece, General) and piece.isWhite() == white:
+                        return square
         return None
     
-    # get all possible moves for a piece
-    def __getPossibleMoves(self, row: int, col: int) -> list:
-        possible_moves = []
-        
-        for row2 in range(10):
-            for col2 in range(9):
-                if self.__isValidMove(row, col, row2, col2):
-                    possible_moves.append((row2, col2))
-                    
-        return possible_moves
+    def isOccupiedAt(self, row, col):
+        return self._squares[row][col].isOccupied()
     
-    # check if making a move will put general in check
-    def __isMoveCheck(self, row1: int, col1: int, row2: int, col2: int) -> bool:
-        piece1_type, piece1_color = self.decodePiece(self.board[row1][col1])
-        
-        # move piece
-        self.board[row2][col2] = self.board[row1][col1]
-        self.board[row1][col1] = 0
-        
-        # check if general is in check
-        is_check = self.__isCheck(piece1_color)
-        
-        # undo move
-        self.setBoardFromFen(self.fen)
-        
-        return is_check
+    def initBoardFromFen(self, fen):
+        rows = fen.split('/')
+        for i in range(0, len(rows)):
+            row = rows[i]
+            squares = []
+            col = 0
+            for j in range(0, len(row)):
+                piece = row[j]
+                if piece >= '1' and piece <= '9':
+                    for k in range(0, int(piece)):
+                        squares.append(Square(i, col, None))
+                        col += 1
+                else:
+                    squares.append(Square(i, col, Piece.createPiece(piece)))
+                    col += 1
+            self._squares.append(squares)
     
-    # check if making a move will put 2 generals facing each other
-    def __isValidMoveAfter(self, row1: int, col1: int, row2: int, col2: int) -> bool:
-        piece1_type, piece1_color = self.decodePiece(self.board[row1][col1])
+    def getBoardFen(self):
+        fen = ''
+        for row in range(0, 10):
+            for col in range(0, 9):
+                square = self.getSquare(row, col)
+                piece = square.getPiece()
+                if piece:
+                    fen += piece.getIdentifier().upper() if piece.isWhite() else piece.getIdentifier()
+                else:
+                    fen += '.'
+            if row < 9:
+                fen += '/'
         
-        # move piece
-        self.board[row2][col2] = self.board[row1][col1]
-        self.board[row1][col1] = 0
-
-        # check if general is in check
-        is_check = self.__isCheck(piece1_color)
+        # replace all the dots with the number of dots
+        fen = re.sub(r'\.+', lambda m: str(len(m.group())), fen)
         
-        # check if general is facing
-        is_general_facing = self.__isGeneralFacing()
-        
-        # undo move
-        self.setBoardFromFen(self.fen)
-
-        print(is_check, is_general_facing)
-        
-        return not is_check and not is_general_facing
+        return fen
     
-    # check if general is facing
-    def __isGeneralFacing(self) -> bool:
-        # get general's position
-        white_general_row, white_general_col = self.__getGeneralPosition('white')
-        black_general_row, black_general_col = self.__getGeneralPosition('black')
+    def getBoard(self):
+        return self._squares
 
-        # if generals are on same column and no piece in between, return True
-        if white_general_col == black_general_col:
-            for row in range(black_general_row + 1, white_general_row):
-                if self.board[row][white_general_col] != 0:
+class Soldier(Piece):
+    def __init__(self, white: bool):
+        super().__init__(white)
+        self.setIdentifier('p')
+
+    def canMove(self, board: Board, start: Square, end: Square) -> bool:
+        if self.isKilled():
+            return False
+        if self.isWhite():
+            # move forward
+            if end.getRow() == start.getRow() - 1 and end.getCol() == start.getCol():
+                return True
+            # move left or right (cross river)
+            if end.getRow() == start.getRow() and abs(end.getCol() - start.getCol()) == 1 and start.getRow() <= 4:
+                return True
+        else:
+            # move forward
+            if end.getRow() == start.getRow() + 1 and end.getCol() == start.getCol():
+                return True
+            # move left or right (cross river)
+            if end.getRow() == start.getRow() and abs(end.getCol() - start.getCol()) == 1 and start.getRow() >= 5:
+                return True
+        return False
+
+class Cannon(Piece):
+    def __init__(self, white: bool):
+        super().__init__(white)
+        self.setIdentifier('c')
+
+    def canMove(self, board: Board, start: Square, end: Square) -> bool:
+        if self.isKilled():
+            return False
+
+        if end.isOccupied():
+            if start.getRow() == end.getRow():
+                # check if there is only one piece in between
+                count = 0
+                for i in range(min(start.getCol(), end.getCol()) + 1, max(start.getCol(), end.getCol())):
+                    if board.isOccupiedAt(start.getRow(), i):
+                        count += 1
+                return count == 1
+            elif start.getCol() == end.getCol():
+                # check if there is only one piece in between
+                count = 0
+                for i in range(min(start.getRow(), end.getRow()) + 1, max(start.getRow(), end.getRow())):
+                    if board.isOccupiedAt(i, start.getCol()):
+                        count += 1
+                return count == 1
+        else:
+            if start.getRow() == end.getRow():
+                # check if there is any piece in between
+                for i in range(min(start.getCol(), end.getCol()) + 1, max(start.getCol(), end.getCol())):
+                    if board.isOccupiedAt(start.getRow(), i):
+                        return False
+                return True
+            elif start.getCol() == end.getCol():
+                # check if there is any piece in between
+                for i in range(min(start.getRow(), end.getRow()) + 1, max(start.getRow(), end.getRow())):
+                    if board.isOccupiedAt(i, start.getCol()):
+                        return False
+                return True
+
+        return False
+
+class Chariot(Piece):
+    def __init__(self, white: bool):
+        super().__init__(white)
+        self.setIdentifier('r')
+
+    def canMove(self, board: Board, start: Square, end: Square):
+        if self.isKilled():
+            return False
+
+        # check if on one row or one column
+        if start.getRow() == end.getRow():
+            # check if there is any piece in between
+            for i in range(min(start.getCol(), end.getCol()) + 1, max(start.getCol(), end.getCol())):
+                if board.isOccupiedAt(start.getRow(), i):
                     return False
-                
             return True
+        elif start.getCol() == end.getCol():
+            # check if there is any piece in between
+            for i in range(min(start.getRow(), end.getRow()) + 1, max(start.getRow(), end.getRow())):
+                if board.isOccupiedAt(i, start.getCol()):
+                    return False
+            return True
+
+        return False
+
+class Horse(Piece):
+    def __init__(self, white: bool):
+        super().__init__(white)
+        self.setIdentifier('n')
+
+    def canMove(self, board: Board, start: Square, end: Square):
+        if self.isKilled():
+            return False
+
+        if abs(end.getCol() - start.getCol()) == 1 and abs(end.getRow() - start.getRow()) == 2:
+            if not board.isOccupiedAt((end.getRow() + start.getRow()) // 2, start.getCol()):
+                return True
+        elif abs(end.getCol() - start.getCol()) == 2 and abs(end.getRow() - start.getRow()) == 1:
+            if not board.isOccupiedAt(start.getRow(), (end.getCol() + start.getCol()) // 2):
+                return True
+        return False
+
+class Elephant(Piece):
+    def __init__(self, white: bool):
+        super().__init__(white)
+        self.setIdentifier('b')
+
+    def canMove(self, board: Board, start: Square, end: Square) -> bool:
+        if self.isKilled():
+            return False
+
+        if self.isWhite():
+            if end.getRow() >= 5:
+                if abs(end.getCol() - start.getCol()) == 2 and abs(end.getRow() - start.getRow()) == 2:
+                    if not board.isOccupiedAt((end.getRow() + start.getRow()) // 2, (end.getCol() + start.getCol()) // 2):
+                        return True
+        else:
+            if end.getRow() <= 4:
+                if abs(end.getCol() - start.getCol()) == 2 and abs(end.getRow() - start.getRow()) == 2:
+                    if not board.isOccupiedAt((end.getRow() + start.getRow()) // 2, (end.getCol() + start.getCol()) // 2):
+                        return True
+
+        return False
+
+class Advisor(Piece):
+    def __init__(self, white):
+        super().__init__(white)
+        self.setIdentifier('a')
+
+    def canMove(self, board, start, end):
+        if self.isKilled():
+            return False
+
+        if self.isWhite():
+            if end.getRow() >= 7 and end.getRow() <= 9 and end.getCol() >= 3 and end.getCol() <= 5:
+                if abs(end.getCol() - start.getCol()) == 1 and abs(end.getRow() - start.getRow()) == 1:
+                    return True
+        else:
+            if end.getRow() >= 0 and end.getRow() <= 2 and end.getCol() >= 3 and end.getCol() <= 5:
+                if abs(end.getCol() - start.getCol()) == 1 and abs(end.getRow() - start.getRow()) == 1:
+                    return True
+
+        return False
+
+class General(Piece):
+    def __init__(self, white: bool):
+        super().__init__(white)
+        self.setIdentifier('k')
+    
+    def canMove(self, board: Board, start: Square, end: Square) -> bool:
+        if self.isKilled():
+            return False
+        
+        if self.isWhite():
+            if end.getRow() >= 7 and end.getRow() <= 9 and end.getCol() >= 3 and end.getCol() <= 5:
+                if abs(end.getCol() - start.getCol()) + abs(end.getRow() - start.getRow()) == 1:
+                    return True
         
         else:
-            return False
-    
-    # check if is there a possible move that will not put general in check
-    def __canEscapeCheck(self, color: str) -> bool:
-        # get general's position
-        general_row, general_col = self.__getGeneralPosition(color)
+            if end.getRow() >= 0 and end.getRow() <= 2 and end.getCol() >= 3 and end.getCol() <= 5:
+                if abs(end.getCol() - start.getCol()) + abs(end.getRow() - start.getRow()) == 1:
+                    return True
         
-        opponent_color = 'white' if color == 'black' else 'black'
+        return False
 
-        # for each piece, if piece is same color as general, get all possible moves
-        for row in range(10):
-            for col in range(9):
-                piece_type, piece_color = self.decodePiece(self.board[row][col])
-                if piece_color == color:
-                    possible_moves = self.__getPossibleMoves(row, col)
+class Player(object):
+    def __init__(self, whiteSide: bool, name: str = 'anonymous'):
+        self._whiteSide = whiteSide
+        self._name = name
+
+    def isWhiteSide(self):
+        return self._whiteSide
+
+    def setWhiteSide(self, whiteSide):
+        self._whiteSide = whiteSide
+
+    def getName(self):
+        return self._name
+
+    def setName(self, name):
+        self._name = name
+
+class Move:
+    def __init__(self, player: Player, start: Square, end: Square):
+        self._player = player
+        self._start = start
+        self._end = end
+        self._pieceMoved = start.getPiece()
+        self._pieceKilled = None
+
+    def getPlayer(self):
+        return self._player
+
+    def getStart(self):
+        return self._start
+
+    def getEnd(self):
+        return self._end
+
+    def setPieceKilled(self, pieceKilled):
+        self._pieceKilled = pieceKilled
+
+    def getPieceKilled(self):
+        return self._pieceKilled
+
+    def getPieceMoved(self):
+        return self._pieceMoved
+
+    def getUci(self):
+        return self._start.getUci() + self._end.getUci()
+
+class Notation:
+    INTERNATIONAL_TO_TYPE = {
+        'p': 'soldier',
+        'k': 'general',
+        'a': 'advisor',
+        'e': 'elephant',
+        'r': 'chariot',
+        'h': 'horse',
+        'c': 'cannon',
+    }
+
+    TYPE_TO_INTERNATIONAL = {
+        'soldier': 'p',
+        'general': 'k',
+        'advisor': 'a',
+        'elephant': 'e',
+        'chariot': 'r',
+        'horse': 'h',
+        'cannon': 'c',
+    }
+
+    def __init__(self) -> None:
+        pass
+
+    def translate_international_to_uci(board: Board, white: bool, notation: str):
+        pieceType: str
+        startRow = -1
+        startCol = -1
+        endRow = -1
+        endCol = -1
+
+        if white:
+            if notation[0] == '+' or notation[0] == '-':
+                piece_type = Notation.INTERNATIONAL_TO_TYPE[notation[1].lower()]
+
+                # there is one column that has two pieces of the same type, find fromCol
+                for row in range(0, 10):
+                    for col in range(0, 9):
+                        square = board.getSquare(row, col)
+                        if square.is_piece(piece_type, white):
+                            # check if the remaining rows have the same piece
+                            has_same_piece = False
+                            for i in range(row + 1, 10):
+                                square = board.getSquare(i, col)
+                                if square.is_piece(piece_type, white):
+                                    has_same_piece = True
+                                    break
+
+                            if has_same_piece:
+                                startCol = col
+                                break
+
+                # find fromRow, if +, fromRow is the first row that has the piece, if -, fromRow is the last row that has the piece
+                if notation[0] == '+':
+                    for i in range(0, 10):
+                        square = board.getSquare(i, startCol)
+                        if square.is_piece(piece_type, white):
+                            startRow = i
+                            break
+                elif notation[0] == '-':
+                    for i in range(9, -1, -1):
+                        square = board.getSquare(i, startCol)
+                        if square.is_piece(piece_type, white):
+                            startRow = i
+                            break
+
+            else:
+                pieceType = Notation.INTERNATIONAL_TO_TYPE[notation[0].lower()]
+                startCol = 9 - int(notation[1])
+                if pieceType.lower() == PIECE_TYPE.ADVISOR:
+                    operator = notation[2]
+                    if startCol == 4:
+                        startRow = 8
+                    else:
+                        if operator == '+':
+                            startRow = 9
+                        else:
+                            startRow = 7
+                elif pieceType.lower() == PIECE_TYPE.ELEPHANT:
+                    operator = notation[2]
+                    if startCol == 2 or startCol == 6:
+                        if operator == '+':
+                            startRow = 9
+                        else:
+                            startRow = 5
+                    else:
+                        startRow = 7
+                else:
+                    # find fromRow
+                    for i in range(0, 10):
+                        square = board.getSquare(i, startCol)
+                        if square.isPiece(pieceType, white):
+                            startRow = i
+                            break
+
+            if piece_type.lower() == PIECE_TYPE.CHARIOT or piece_type.lower() == PIECE_TYPE.GENERAL or piece_type.lower() == PIECE_TYPE.CANNON or piece_type.lower() == PIECE_TYPE.SOLDIER:
+                operator = notation[2]
+                toValue = int(notation[3])
+                if operator == '+':
+                    end_col = startCol
+                    end_row = startRow - toValue
+                elif operator == '-':
+                    end_col = startCol
+                    end_row = startRow + toValue
+                elif operator == '=':
+                    end_row = startRow
+                    end_col = 9 - toValue
+
+            elif pieceType.lower() == PIECE_TYPE.ADVISOR or pieceType.lower() == PIECE_TYPE.ELEPHANT:
+                operator = notation[2]
+                toValue = int(notation[3])
+                if operator == '+':
+                    endCol = 9 - toValue
+                    endRow = startRow - abs(startCol - endCol)
+                elif operator == '-':
+                    endCol = 9 - toValue
+                    endRow = startRow + abs(startCol - endCol)
+
+            elif pieceType.lower() == PIECE_TYPE.HORSE:
+                operator = notation[2]
+                toValue = int(notation[3])
+                if operator == '+':
+                    endCol = 9 - toValue
+                    endRow = startRow - (3 - abs(startCol - endCol))
+                elif operator == '-':
+                    endCol = 9 - toValue
+                    endRow = startRow + (3 - abs(startCol - endCol))
+
+
+        else:
+            if notation[0] == '+' or notation[0] == '-':
+                pieceType = Notation.INTERNATIONAL_TO_TYPE[notation[1].lower()]
+
+                # there is one column that has two pieces of the same type, find fromCol
+                for row in range(0, 10):
+                    for col in range(0, 9):
+                        square = board.getSquare(row, col)
+                        if square.isPiece(pieceType, white):
+                            # check if the remaining rows have the same piece
+                            hasSamePiece = False
+                            for i in range(row + 1, 10):
+                                square = board.getSquare(i, col)
+                                if square.isPiece(pieceType, white):
+                                    hasSamePiece = True
+                                    break
+
+                            if hasSamePiece:
+                                startCol = col
+                                break
+
+                # find fromRow, if +, fromRow is the first row that has the piece, if -, fromRow is the last row that has the piece
+                if notation[0] == '-':
+                    for i in range(0, 10):
+                        square = board.getSquare(i, startCol)
+                        if square.isPiece(pieceType, white):
+                            startRow = i
+                            break
+                elif notation[0] == '+':
+                    for i in range(9, 0, -1):
+                        square = board.getSquare(i, startCol)
+                        if square.isPiece(pieceType, white):
+                            startRow = i
+                            break
+
+            else:
+                pieceType = Notation.INTERNATIONAL_TO_TYPE[notation[0].lower()]
+                startCol = int(notation[1]) - 1
+                if pieceType.lower() == PIECE_TYPE.ADVISOR:
+                    operator = notation[2]
+                    if startCol == 4:
+                        startRow = 1
+                    else:
+                        if operator == '+':
+                            startRow = 0
+                        else:
+                            startRow = 2
+                elif pieceType.lower() == PIECE_TYPE.ELEPHANT:
+                    operator = notation[2]
+                    if startCol == 2 or startCol == 6:
+                        if operator == '+':
+                            startRow = 0
+                        else:
+                            startRow = 4
+                    else:
+                        startRow = 2
+                else:
+                    # find fromRow
+                    for i in range(0, 10):
+                        square = board.getSquare(i, startCol)
+                        if square.isPiece(pieceType, white):
+                            startRow = i
+                            break
+
+            if pieceType.lower() == PIECE_TYPE.CHARIOT or pieceType.lower() == PIECE_TYPE.GENERAL or pieceType.lower() == PIECE_TYPE.CANNON or pieceType.lower() == PIECE_TYPE.SOLDIER:
+                operator = notation[2]
+                toValue = int(notation[3])
+                if operator == '+':
+                    endCol = startCol
+                    endRow = startRow + toValue
+                elif operator == '-':
+                    endCol = startCol
+                    endRow = startRow - toValue
+                elif operator == '=':
+                    endRow = startRow
+                    endCol = toValue - 1
+
+            elif pieceType.lower() == PIECE_TYPE.ADVISOR or pieceType.lower() == PIECE_TYPE.ELEPHANT:
+                operator = notation[2]
+                toValue = int(notation[3])
+                if operator == '+':
+                    endCol = toValue - 1
+                    endRow = startRow + abs(startCol - endCol)
+                elif operator == '-':
+                    endCol = toValue - 1
+                    endRow = startRow - abs(startCol - endCol)
+
+            elif pieceType.lower() == PIECE_TYPE.HORSE:
+                operator = notation[2]
+                toValue = int(notation[3])
+                if operator == '+':
+                    endCol = toValue - 1
+                    endRow = startRow + (3 - abs(startCol - endCol))
+                elif operator == '-':
+                    endCol = toValue - 1
+                    endRow = startRow - (3 - abs(startCol - endCol))        
+
+
+        uci = chr(97 + startCol) + str(9 - startRow) + chr(97 + endCol) + str(9 - endRow)
+        return uci
+    
+    def translate_uci_to_international(self, board: Board, uci: str) -> str or None:
+        startCol = ord(uci[0]) - 97
+        startRow = 9 - int(uci[1])
+        endCol = ord(uci[2]) - 97
+        endRow = 9 - int(uci[3])
+
+        startSquare = board.getSquare(startRow, startCol)
+        startPiece = startSquare.getPiece()
+        if not startPiece:
+            print('no piece on start square')
+            return None
+
+        pieceColor = startPiece.isWhite()
+        pieceType = startPiece.getType()
+
+        uci_piece_type = Notation.TYPE_TO_INTERNATIONAL[pieceType].upper()
+
+        # count the number of pieces of the same type and color on startCol
+        count = 0
+        for i in range(10):
+            square = board.getSquare(i, startCol)
+            if square.isPiece(pieceType, pieceColor):
+                count += 1
+
+        if pieceColor:
+            if count == 1:
+                if pieceType.lower() == PIECE_TYPE.CHARIOT or pieceType.lower() == PIECE_TYPE.CANNON or pieceType.lower() == PIECE_TYPE.SOLDIER or pieceType.lower() == PIECE_TYPE.GENERAL:
+                    if startRow == endRow:
+                        return uci_piece_type + str(9 - startCol) + '=' + str(9 - endCol)
+                    else:
+                        if startRow < endRow:
+                            return uci_piece_type + str(9 - startCol) + '-' + str(endRow - startRow)
+                        else:
+                            return uci_piece_type + str(9 - startCol) + '+' + str(startRow - endRow)
+                        
+                elif pieceType.lower() == PIECE_TYPE.ADVISOR or pieceType.lower() == PIECE_TYPE.ELEPHANT or pieceType.lower() == PIECE_TYPE.HORSE:
+                    if startRow < endRow:
+                        return uci_piece_type + str(9 - startCol) + '-' + str(9 - endCol)
+                    else:
+                        return uci_piece_type + str(9 - startCol) + '+' + str(9 - endCol)
                     
-                    # for each possible move, if move is not check, return True
-                    for move in possible_moves:
-                        print('moveType', piece_type, move)
-                        if self.__isValidMoveAfter(row, col, move[0], move[1]):
-                            return True
+            elif count == 2:
+                # check if the piece is the first or second piece on the column
+                isUpper = True
+                for i in range(startRow):
+                    square = board.getSquare(i, startCol)
+                    if square.isPiece(pieceType, pieceColor):
+                        isUpper = False
+                        break
+
+                if pieceType.lower() == PIECE_TYPE.CHARIOT or pieceType.lower() == PIECE_TYPE.CANNON or pieceType.lower() == PIECE_TYPE.SOLDIER:
+                    if startRow == endRow:
+                        return '+' if isUpper else '-' + uci_piece_type + '=' + str(9 - endCol)
+                    else:
+                        if startRow < endRow:
+                            return '+' if isUpper else '-' + uci_piece_type + '-' + str(endRow - startRow)
+                        else:
+                            return '+' if isUpper else '-' + uci_piece_type + '+' + str(startRow - endRow)
+                        
+                elif pieceType.lower() == PIECE_TYPE.ADVISOR or pieceType.lower() == PIECE_TYPE.ELEPHANT:
+                    if startRow < endRow:
+                        return uci_piece_type + str(9 - startCol) + '-' + str(9 - endCol)
+                    else:
+                        return uci_piece_type + str(9 - startCol) + '+' + str(9 - endCol)
+                    
+                elif pieceType.lower() == PIECE_TYPE.HORSE:
+                    if startRow < endRow:
+                        return '+' if isUpper else '-' + uci_piece_type + '-' + str(9 - endCol)
+                    else:
+                        return '+' if isUpper else '-' + uci_piece_type + '+' + str(9 - endCol)
+                    
+
+        else:
+            if count == 1:
+                if pieceType.lower() == PIECE_TYPE.CHARIOT or pieceType.lower() == PIECE_TYPE.CANNON or pieceType.lower() == PIECE_TYPE.SOLDIER or pieceType.lower() == PIECE_TYPE.GENERAL:
+                    if startRow == endRow:
+                        return uci_piece_type + str(startCol + 1) + '=' + str(endCol + 1)
+                    else:
+                        if startRow < endRow:
+                            return uci_piece_type + str(startCol + 1) + '+' + str(endRow - startRow)
+                        else:
+                            return uci_piece_type + str(startCol + 1) + '-' + str(startRow - endRow)
+                        
+                elif pieceType.lower() == PIECE_TYPE.ADVISOR or pieceType.lower() == PIECE_TYPE.ELEPHANT or pieceType.lower() == PIECE_TYPE.HORSE:
+                    if startRow < endRow:
+                        return uci_piece_type + str(startCol + 1) + '+' + str(endCol + 1)
+                    else:
+                        return uci_piece_type + str(startCol + 1) + '-' + str(endCol + 1)
+                    
+            elif count == 2:
+                # check if the piece is the first or second piece on the column
+                isUpper = True
+                for i in range(9, startRow, -1):
+                    square = board.getSquare(i, startCol)
+                    if square.isPiece(pieceType, pieceColor):
+                        isUpper = False
+                        break
+
+                if pieceType.lower() == PIECE_TYPE.CHARIOT or pieceType.lower() == PIECE_TYPE.CANNON or pieceType.lower() == PIECE_TYPE.SOLDIER:
+                    if startRow == endRow:
+                        return "+" + uci_piece_type + "=" + str(endCol + 1) if isUpper else "-" + uci_piece_type + "=" + str(endCol + 1)
+                    else:
+                        if startRow < endRow:
+                            return "+" + uci_piece_type + "+" + str(endRow - startRow) if isUpper else "-" + uci_piece_type + "+" + str(endRow - startRow)
+                        else:
+                            return "+" + uci_piece_type + "-" + str(startRow - endRow) if isUpper else "-" + uci_piece_type + "-" + str(startRow - endRow)
+                        
+                elif pieceType.lower() == PIECE_TYPE.ADVISOR or pieceType.lower() == PIECE_TYPE.ELEPHANT:
+                    if startRow < endRow:
+                        return uci_piece_type + str(startCol + 1) + "+" + str(endCol + 1)
+                    else:
+                        return uci_piece_type + str(startCol + 1) + "-" + str(endCol + 1)
+                    
+                elif pieceType.lower() == PIECE_TYPE.HORSE:
+                    if startRow < endRow:
+                        return "+" + uci_piece_type + "+" + str(endCol + 1) if isUpper else "-" + uci_piece_type + "+" + str(endCol + 1)
+                    else:
+                        return "+" + uci_piece_type + "-" + str(endCol + 1) if isUpper else "-" + uci_piece_type + "-" + str(endCol + 1)
         
+                    
+        return None
+
+class Game(Notation):
+
+    STARTING_BOARD_FEN = 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR'
+
+    def __init__(self, p1: Player, p2: Player):
+        super().__init__()
+        self._players = [p1, p2]
+        self._board = Board(Game.STARTING_BOARD_FEN)
+        self._currentPlayer = p1 if p1.isWhiteSide() else p2
+        self._XIANGQI_STATUS = XIANGQI_STATUS.WAITING
+        self._moves = []
+        self._internationalNotations = []
+
+    # ------------------------------------------------------------
+    # PUBLIC FUNCTIONS
+    # ------------------------------------------------------------
+    
+    def start(self):
+        self._XIANGQI_STATUS = XIANGQI_STATUS.PLAYING
+
+    def initialize(self, p1: Player, p2: Player):
+        self._players = [p1, p2]
+        self._board = Board(Game.STARTING_BOARD_FEN)
+        self._currentPlayer = p1 if p1.isWhiteSide() else p2
+        self._XIANGQI_STATUS = XIANGQI_STATUS.WAITING
+        self._moves = []
+        self._internationalNotations = []
+
+    def reset(self):
+        self._board = Board(Game.STARTING_BOARD_FEN)
+        self._currentPlayer = self._players[0] if self._players[0].isWhiteSide() else self._players[1]
+        self._XIANGQI_STATUS = XIANGQI_STATUS.WAITING
+        self._moves = []
+        self._internationalNotations = []
+
+    def make_move_from_uci(self, uci: str) -> bool:
+        move = Move(self._currentPlayer, self._board.getSquareFromUci(uci[:2]), self._board.getSquareFromUci(uci[2:]))
+        return self._make_move_safe_mode(move)
+    
+    def make_move_from_international_notation(self, internationalNotation: str) -> bool:
+        uci = self.translate_international_to_uci(self.getBoard(), self._currentPlayer.isWhiteSide(), internationalNotation)
+        return self.make_move_from_uci(uci)
+
+    def undo_move(self) -> bool:
+        return self._undo_move_safe_mode()
+
+    def get_fen(self, format: str = 'chessdb') -> str:
+        if format == 'chessdb':
+            return self._get_fen_chessdb_format()
+        elif format == 'hdnum16':
+            return self._get_fen_hdnum16_format()
+        else:
+            raise Exception('Invalid format')
+
+    # ------------------------------------------------------------
+    # GETTERS AND SETTERS
+    # ------------------------------------------------------------
+
+    def getBoard(self):
+        return self._board
+
+    def whoIsPlaying(self) -> Dict[str, str]:
+        return {
+            'white': self._players[0].getName(),
+            'black': self._players[1].getName(),
+        }
+
+    def getCurrentPlayer(self) -> Player:
+        return self._currentPlayer
+
+    def getStatus(self) -> XIANGQI_STATUS:
+        return self._XIANGQI_STATUS
+    
+    def setStatus(self, status):
+        self._XIANGQI_STATUS = status
+
+    def isEndGame(self) -> bool:
+        return self._XIANGQI_STATUS != XIANGQI_STATUS.PLAYING
+    
+    def get_list_uci(self) -> List[str]:
+        return [move.getUci() for move in self._moves]
+    
+    def get_list_international_notation(self) -> List[str]:
+        return self._internationalNotations
+    
+    def is_white_turn(self) -> bool:
+        return self._currentPlayer.isWhiteSide()
+
+    # ------------------------------------------------------------
+    # HELPER FUNCTIONS
+    # ------------------------------------------------------------
+
+    def _get_fen_chessdb_format(self):
+        board_fen = self._board.getBoardFen()
+        turn = 'w' if self._currentPlayer.isWhiteSide() else 'b'
+        moves = self.get_list_uci()
+
+        if len(moves) == 0:
+            return board_fen + ' ' + turn + ' moves'
+
+        return board_fen + ' ' + turn + ' moves ' + ' '.join(moves)
+    
+    def _get_fen_hdnum16_format(self) -> str:
+        moves: List[str] = self._internationalNotations
+
+        if len(moves) == 0:
+            return 'moves'
+
+        return 'moves ' + ' '.join(moves)
+    
+    def _getInternationalNotation(self, move: Move) -> str or None:
+        uci = move.getUci()
+        international_notation = self.translate_uci_to_international(self.getBoard(), uci)
+        if international_notation == None:
+            return 'null'
+        return international_notation
+    
+    def _pushMove(self, move: Move) -> None:
+        self._moves.append(move)
+        self._internationalNotations.append(self._getInternationalNotation(move))
+
+    def _popMove(self) -> Move or None:
+        if len(self._moves) == 0:
+            return None
+        move = self._moves.pop()
+        self._internationalNotations.pop()
+        return move
+
+    def _getValidMoves(self, square: Square) -> List[Move]:
+        piece = square.getPiece()
+        moves: Move = []
+        if piece != None:
+            for row in range(0, 10):
+                for col in range(0, 9):
+                    move = Move(self._currentPlayer, square, self._board.getSquare(row, col))
+                    if self._isValidMove(move):
+                        moves.append(move)
+        return moves
+
+    # ------------------------------------------------------------
+    # GAME LOGIC
+    # ------------------------------------------------------------
+
+    def _make_move_safe_mode(self, move: Move) -> bool:
+        # check game status
+        if self.isEndGame():
+            return False
+
+        # check if the move is valid corresponding to piece type
+        if not self._isValidMove(move):
+            print('Invalid move')
+            return False
+
+        self._makeMove(move)
+        # check if the player is in check
+        isCheck = self._isCheck(move.getPlayer().isWhiteSide())
+
+        # check if general face to face
+        isGeneralFaceToFace = self._isGeneralFaceToFace()
+
+        if not isCheck and not isGeneralFaceToFace:
+            # check if opponent is in check
+            isOpponentCheck = self._isCheck(not move.getPlayer().isWhiteSide())
+
+            # check if opponent is in checkmate
+            isOpponentCheckMate = self._isCheckmate(not move.getPlayer().isWhiteSide())
+
+            if isOpponentCheck and isOpponentCheckMate:
+                # check color and set game status
+                if move.getPlayer().isWhiteSide():
+                    self.setStatus(XIANGQI_STATUS.WHITEWIN)
+                else:
+                    self.setStatus(XIANGQI_STATUS.BLACKWIN)
+
+            print('isOpponentCheck', isOpponentCheck)
+            print('isOpponentCheckMate', isOpponentCheckMate)
+
+            return True
+        else:
+            self._undoMove()
+            return False
+
+    def _undo_move_safe_mode(self) -> bool:
+        # check game status
+        if self.isEndGame():
+            return False
+
+        return self._undoMove()
+
+    def _makeMove(self, move: Move):
+        destPiece = move.getEnd().getPiece()
+        if destPiece is not None:
+            destPiece.setKilled(True)
+            move.setPieceKilled(destPiece)
+
+        # store the move
+        self._pushMove(move)
+
+        # move the piece
+        move.getEnd().setPiece(move.getStart().getPiece())
+        move.getStart().setPiece(None)
+        
+        if destPiece is not None and destPiece.getType() == PIECE_TYPE.GENERAL:
+            if move.getPlayer().isWhiteSide():
+                self.setStatus(XIANGQI_STATUS.WHITEWIN)
+            else:
+                self.setStatus(XIANGQI_STATUS.BLACKWIN)
+
+        # switch player
+        if self._currentPlayer == self._players[0]:
+            self._currentPlayer = self._players[1]
+        else:
+            self._currentPlayer = self._players[0]
+
+    def _undoMove(self) -> bool:
+        if len(self._moves) > 0:
+            lastMove = self._popMove()
+            # make sure the move is not null
+            if lastMove is None:
+                return False
+
+            start = lastMove.getStart()
+            end = lastMove.getEnd()
+            pieceMoved = lastMove.getPieceMoved()
+            pieceKilled = lastMove.getPieceKilled()
+
+            start.setPiece(pieceMoved)
+            end.setPiece(pieceKilled)
+
+            if pieceKilled is not None:
+                pieceKilled.setKilled(False)
+
+            if self._currentPlayer == self._players[0]:
+                self._currentPlayer = self._players[1]
+            else:
+                self._currentPlayer = self._players[0]
+
+            self.setStatus(XIANGQI_STATUS.PLAYING)
+
+            return True
+
+        return False
+
+    def _isValidMove(self, move: Move) -> bool:
+        # check if source is empty
+        sourcePiece = move.getStart().getPiece()
+        if sourcePiece == None:
+            print('source is empty')
+            return False
+
+        # check if the player is correct
+        player = move.getPlayer()
+        if player != self._currentPlayer:
+            print('player is not correct')
+            return False
+
+        # check if player is moving the correct color
+        if player.isWhiteSide() != sourcePiece.isWhite():
+            print('player is not moving the correct color')
+            return False
+
+        destPiece = move.getEnd().getPiece()
+        # check if the destination is not the same color
+        if destPiece != None and destPiece.isWhite() == sourcePiece.isWhite():
+            print('destination is not the same color')
+            return False
+
+        # check if the move is valid
+        if not sourcePiece.canMove(self._board, move.getStart(), move.getEnd()):
+            print('move is not valid')
+            return False
+
+        return True
+    
+    def _isValidAfterMove(self, move):
+        self._makeMove(move)
+        # check if the player is in check
+        isCheck = self._isCheck(move.getPlayer().isWhiteSide())
+        # check if general face to face
+        isGeneralFaceToFace = self._isGeneralFaceToFace()
+        # undo move
+        self._undoMove()
+        return not isCheck and not isGeneralFaceToFace
+
+    def _isCheck(self, white: bool) -> bool:
+        general = self._board.getGeneral(white)
+        if general == None:
+            return False
+        # for each piece, if piece is opposite color and piece can move to general's position, return True
+        for row in range(0,10):
+            for col in range(0,9):
+                piece = self._board.getSquare(row,col).getPiece()
+                if piece != None and piece.isWhite() != white:
+                    if piece.canMove(self._board, self._board.getSquare(row,col), general):
+                        return True
         return False
     
-    # checkmate
-    def __isCheckmate(self, color: str) -> bool:
-        # check if general is in check
-        if self.__isCheck(color):
-            # check if general can escape check
-            if not self.__canEscapeCheck(color):
-                return True
+    def _isGeneralFaceToFace(self):
+        whiteGeneral = self._board.getGeneral(True)
+        blackGeneral = self._board.getGeneral(False)
+
+        if whiteGeneral is None or blackGeneral is None:
+            return False
+
+        if whiteGeneral.getCol() != blackGeneral.getCol():
+            return False
+
+        for row in range(blackGeneral.getRow() + 1, whiteGeneral.getRow()):
+            if self._board.isOccupiedAt(row, blackGeneral.getCol()):
+                return False
+
+        return True
+    
+    def _isStalemate(self, white: bool) -> bool:
+        for row in range(0, 10):
+            for col in range(0, 9):
+                square = self._board.getSquare(row, col)
+                piece = square.getPiece()
+                # check color of piece
+                if piece is not None and piece.isWhite() == white:
+                    moves = self._getValidMoves(square)
+                    # for each possible move, if move is not check, return True
+                    for i in range(0, len(moves)):
+                        if self._isValidAfterMove(moves[i]):
+                            return False
+
+        return True
+    
+    def _isCheckmate(self, white: bool) -> bool:
+        return self._isCheck(white) and self._isStalemate(white)
+    
+class Validator:
+    def __init__(self) -> None:
+        p1: Player = Player(True)
+        p2: Player = Player(False)
+        self._game: Game = Game(p1, p2)
+
+    def load(self, fen: str) -> bool:
+        board_fen, is_white_turn, list_moves = self._decode_fen(fen)
+        self._load_from_uci_notation(list_moves)
+
+        loaded_fen: str = self._game.get_fen()
+        print('trueee_fen: ' + '_' + fen + '_')
+        print('loaded_fen: ' + '_' + loaded_fen + '_')
+        if loaded_fen != fen:
+            print('FEN not loaded correctly')
+            return False
         
-        return False
+        return True
+    
+    def make_move_from_uci(self, uci: str) -> bool:
+        return self._game.make_move_from_uci(uci)
+    
+    def get_fen(self) -> str:
+        return self._game.get_fen()
+    
+    def is_white_turn(self) -> bool:
+        return self._game.is_white_turn()
+    
+    def is_game_over(self) -> bool:
+        return self._game.isEndGame()
+    
+    def get_status(self) -> str:
+        return self._game.getStatus()
+
+    def _load_from_uci_notation(self, list_moves: List[str]) -> None:
+        self._restart()
+
+        for i in range(0, len(list_moves)):
+            move_made = self._game.make_move_from_uci(list_moves[i]);
+            if not move_made:
+                print('Invalid move: ' + list_moves[i])
+                break
+
+    def _restart(self):
+        self._game.reset()
+        self._game.start()
+
+    def _decode_fen(self, fen: str) -> Tuple[str, bool, List[str]]:
+        board_fen: str = fen.split(' ')[0]
+        is_white_turn: bool = (fen.split(' ')[1] == 'w')
+        list_moves: List[str] = []
+        if 'moves ' in fen:
+            list_moves = fen.split('moves ')[1].split(' ')
+
+        return board_fen, is_white_turn, list_moves
