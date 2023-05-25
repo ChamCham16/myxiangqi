@@ -22,4 +22,5 @@ urlpatterns = [
     path('api/xnote/', include('xnote.urls')),
     path('api/chat/', include('chat.urls')),
     path('api/room/', include('room.urls')),
+    path('api/book/', include('xiangqibook.urls')),
 ]

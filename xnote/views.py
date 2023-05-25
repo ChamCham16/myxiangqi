@@ -52,6 +52,45 @@ class RandomXiangqiGameView(APIView):
         return Response({'error': 'User is not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
     
 @permission_classes([IsAuthenticated])
+class XiangqiGameView(APIView):
+    # get game by id
+    def post(self, request):
+        user = request.user
+        if user.is_authenticated:
+            print('user is authenticated')
+            id = request.data['id']
+            game = XiangqiGame.objects.get(id=id)
+            game_serializer = XiangqiGameSerializer(game)
+            return Response(game_serializer.data, status=status.HTTP_200_OK)
+        
+        return Response({'error': 'User is not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
+
+@permission_classes([IsAuthenticated])
+class OpeningXiangqiGameView(APIView):
+    # get all unique openings
+    def get(self, request):
+        user = request.user
+        if user.is_authenticated:
+            print('user is authenticated')
+            openings = XiangqiGame.objects.values_list('OPENING', flat=True).distinct()
+            return Response(openings, status=status.HTTP_200_OK)
+        
+        return Response({'error': 'User is not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    def post(self, request):
+        # get first 40 games with a given opening
+        user = request.user
+        if user.is_authenticated:
+            print('user is authenticated')
+            opening = request.data['opening']
+            page = request.data['page'] - 1
+            games = XiangqiGame.objects.filter(OPENING=opening)[page*100:(page+1)*100]
+            games_serializer = XiangqiGameSerializer(games, many=True)
+            return Response(games_serializer.data, status=status.HTTP_200_OK)
+        
+        return Response({'error': 'User is not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+@permission_classes([IsAuthenticated])
 class OpeningBookPlayedByMastersView(APIView):
     # post a fen string to get a list of moves
     def post(self, request):

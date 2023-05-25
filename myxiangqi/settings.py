@@ -27,7 +27,8 @@ SECRET_KEY = 'django-insecure-i9tz#z+vz9gu%1wun(vhze&v3^-ggc_@aa+(t7i2@m%27fk7c8
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False # change to False when deploying
 
-ALLOWED_HOSTS = ['localhost', 'Hdnum16.pythonanywhere.com']
+# ALLOWED_HOSTS = ['localhost', 'Hdnum16.pythonanywhere.com']
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -52,12 +53,14 @@ INSTALLED_APPS = [
     'xnote.apps.XnoteConfig',
     'chat.apps.ChatConfig',
     'room.apps.RoomConfig',
+    'xiangqibook.apps.XiangqibookConfig',
 ]
 
-CORS_ORIGIN_WHITELIST = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+# CORS_ORIGIN_WHITELIST = [
+#     "http://localhost:3000",
+#     "http://192.168.0.9:3000",
+#     "http://127.0.0.1:3000",
+# ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ORIGIN_ALLOW_ALL = True
 
