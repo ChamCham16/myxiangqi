@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-i9tz#z+vz9gu%1wun(vhze&v3^-ggc_@aa+(t7i2@m%27fk7c8
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False # change to False when deploying
 
-# ALLOWED_HOSTS = ['localhost', 'Hdnum16.pythonanywhere.com']
+# ALLOWED_HOSTS = ['localhost', 'Hdnum16.pythonanywhere.com', '192.168.0.9:8000']
 ALLOWED_HOSTS = ['*']
 
 
@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'chat.apps.ChatConfig',
     'room.apps.RoomConfig',
     'xiangqibook.apps.XiangqibookConfig',
+    'engine.apps.EngineConfig',
 ]
 
 # CORS_ORIGIN_WHITELIST = [

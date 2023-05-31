@@ -23,4 +23,5 @@ urlpatterns = [
     path('api/chat/', include('chat.urls')),
     path('api/room/', include('room.urls')),
     path('api/book/', include('xiangqibook.urls')),
+    path('api/engine/', include('engine.urls')),
 ]
